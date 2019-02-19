@@ -67,8 +67,9 @@
                     popul.evaluate();
                     popul.selection();
                     count_frame = 0;
-                    cycles++;
+                    nb_crashed = 0;
                     reached = 0;
+                    cycles++;
                     // popul=new population()
                 }
             }
@@ -88,19 +89,18 @@
                     /* On calcule l'efficacité absolue pour toutes les rockets */
                     avg_fitness = 0;
                     avg_fit_wo_crash = 0;
-                    nb_crashed = 0;
                     for (var i = 0; i < this.popsize; i++) {
                         this.rockets[i].calcFitness();
                         avg_fitness += this.rockets[i].fitness;
                         if (this.rockets[i].fitness > this.maxfit) {
                             this.maxfit = this.rockets[i].fitness;
                         }
-                        if (this.rockets[i].fitness === 0) {
-                            nb_crashed++;
+                        if (this.rockets[i].crashed === false) {
+                            avg_fit_wo_crash += this.rockets[i].fitness;
                         }
 //                        console.log("Efficacite absolue : " + this.rockets[i].fitness);
                     }
-                    avg_fit_wo_crash = avg_fitness;
+//                    console.log((this.popsize - nb_crashed));
                     avg_fitness /= this.popsize;
                     avg_fit_wo_crash /= (this.popsize - nb_crashed);
 
@@ -173,19 +173,21 @@
 
                 this.calcFitness = function () {
                     // If rocket crashed dna is bad
-                    if (this.crashed) {
-                        this.fitness = 0;
-                    } else {
-                        var d = dist(circle_target.x, circle_target.y, this.pos.x, this.pos.y);
+//                    if (this.crashed) {
+//                        this.fitness = 0;
+//                    } else {
+                    var d = dist(circle_target.x, circle_target.y, this.pos.x, this.pos.y);
 //                    console.log("Distance restante : " + d);
-                        this.fitness = map(d, 0, height, height, 0);
+                    this.fitness = map(d, 0, height, height, 0);
 //                    console.log("Distance parcourue : " + this.fitness);
-                        /* Plus le chemin est court plus c'est efficace */
-                        if (this.completed) {
-                            this.fitness *= 2 + (lifespan - this.nb_frames) / 100;
+                    /* Plus le chemin est court plus c'est efficace */
+                    if (this.completed) {
+                        this.fitness *= 2 + (lifespan - this.nb_frames) / 100;
 //                            console.log(1 + (lifespan - this.nb_frames) / 100);
-                        }
+                    } else if (this.crashed) {
+                        this.fitness /= 2 + (lifespan - this.nb_frames) / 100;
                     }
+//                    }
                 };
 
                 this.show = function () {
@@ -202,9 +204,13 @@
                     if (!this.completed && !this.crashed) {
                         if (this.pos.x > rect_obstacle.x && this.pos.x < rect_obstacle.x + w && this.pos.y > rect_obstacle.y && this.pos.y < rect_obstacle.y + h) {
                             this.crashed = true;
+                            this.nb_frames = count_frame;
+                            nb_crashed++;
                         }
                         if (this.pos.x < 0 || this.pos.x > width || this.pos.y < 0 || this.pos.y > height) {
                             this.crashed = true;
+                            this.nb_frames = count_frame;
+                            nb_crashed++;
                         }
                         var d = dist(this.pos.x, this.pos.y, circle_target.x, circle_target.y);
                         if (d < 20) {
@@ -238,7 +244,6 @@
 
                 this.crossover = function (partner) {
                     var newgenes = [];
-                    var mid = floor(random(this.genes.length));
 //                    console.log("gene length : " + this.genes.length);
                     for (var i = 0; i < lifespan; i++) {
                         if (Math.floor(Math.random() * Math.floor(2)) === 0) {
