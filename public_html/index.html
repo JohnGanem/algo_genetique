@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Génétique algorithme</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.6.0/p5.js"></script>  
+    </head>
+    <body>
+        <script>
+            /* Original source : https://code.sololearn.com/WPey7B7drDvy#js 
+             * Modifié pour prendre en compte le résultat de la population dans
+             * le pool adn et pour chercher le chemin le plus court
+             * + plusieurs corrections de bugs et optimisation du code
+             * + lors d'une reproduction on prend aléatoirement les gènes au
+             * lieu de prendre la première moitié A et la deuxième moitié B
+             * + ajout de statistiques
+             * */
+
+            var lifespan = 200;
+            var count_frame = 0;
+            var popul;
+            var circle_target;
+            var rect_obstacle;
+            var cycles = 0;
+            var w = 200;
+            var h = 40;
+            var reached = 0;
+            var nb_max_fitness = 0;
+            var avg_fitness = 0;
+            var avg_fit_wo_crash = 0;
+            var nb_crashed = 0;
+
+            function setup() {
+                createCanvas(400, 500);
+                popul = new population();
+                circle_target = createVector(width / 2, 30);
+                rect_obstacle = createVector(100, height / 2);
+            }
+
+            function draw() {
+                background(51);
+//                frameRate(30);
+                popul.run();
+                count_frame++;
+
+                fill(255, 100, 200, 230);
+                noStroke();
+                ellipse(circle_target.x, circle_target.y, 20, 20);
+                //rectMode(CENTER)
+                fill(0, 200, 255, 200);
+                rect(rect_obstacle.x, rect_obstacle.y, w, h);
+                fill(100, 255, 100, 230);
+                /* La max efficacité est théorique, c'est la valeur si le sujet 
+                 * touche la cible en spawnant */
+                text("max efficacite : " + (height * (2 + (lifespan / 100))), 20, 20);
+                text("max effi. actuelle : " + floor(popul.maxfit), 20, 40);
+                text("nombre max effi. actu. : " + nb_max_fitness, 20, 60);
+                text("moyenne effi. actu. : " + floor(avg_fitness), 20, 80);
+                text("nombre crash : " + nb_crashed, 20, 100);
+                text("moyenne sans crash : " + floor(avg_fit_wo_crash), 20, 120);
+                text("population size : " + popul.popsize, 20, 140);
+                text("lifespan : " + lifespan + " frames", 20, 160);
+                text("cycles : " + cycles, 20, 180);
+                text("counter : " + count_frame, 20, 200);
+                text("target hits : " + reached, 20, 220);
+
+                if (count_frame === lifespan) {
+                    popul.evaluate();
+                    popul.selection();
+                    count_frame = 0;
+                    cycles++;
+                    reached = 0;
+                    // popul=new population()
+                }
+            }
+
+            function population() {
+                this.rockets = [];
+                this.maxfit = 0;
+                this.popsize = 300;
+                this.meatingpool = [];
+
+                for (var i = 0; i < this.popsize; i++) {
+                    this.rockets[i] = new rocket();
+                }
+
+                this.evaluate = function () {
+//                    console.log("Maxfit : " + this.maxfit);
+                    /* On calcule l'efficacité absolue pour toutes les rockets */
+                    avg_fitness = 0;
+                    avg_fit_wo_crash = 0;
+                    nb_crashed = 0;
+                    for (var i = 0; i < this.popsize; i++) {
+                        this.rockets[i].calcFitness();
+                        avg_fitness += this.rockets[i].fitness;
+                        if (this.rockets[i].fitness > this.maxfit) {
+                            this.maxfit = this.rockets[i].fitness;
+                        }
+                        if (this.rockets[i].fitness === 0) {
+                            nb_crashed++;
+                        }
+//                        console.log("Efficacite absolue : " + this.rockets[i].fitness);
+                    }
+                    avg_fit_wo_crash = avg_fitness;
+                    avg_fitness /= this.popsize;
+                    avg_fit_wo_crash /= (this.popsize - nb_crashed);
+
+                    /* En divisant par la meilleure efficacité trouvée pour tous les cycles,
+                     * on calcule l'efficacité relative du parcours actuel */
+                    nb_max_fitness = 0;
+                    for (var i = 0; i < this.popsize; i++) {
+                        this.rockets[i].fitness /= this.maxfit;
+                        if (this.rockets[i].fitness === 1) {
+                            nb_max_fitness++;
+                        }
+//                        console.log("Efficacite relative : " + this.rockets[i].fitness);
+                    }
+
+                    /* On ajoute dans le pool de gêne (efficacité * 1000) fois la rocket
+                     * (on ajoute donc plus de fois les rockets efficaces) */
+                    this.meatingpool = [];
+                    for (var i = 0; i < this.popsize; i++) {
+                        var n = this.rockets[i].fitness * 1000;
+//                        console.log("Nombre dans le pool : " + n);
+                        for (var j = 0; j < n; j++) {
+                            this.meatingpool.push(this.rockets[i]);
+                        }
+                    }
+                    /* Si le pool de gêne est vide on ajoute la première rocket une fois */
+                    if (this.meatingpool.length === 0) {
+                        this.meatingpool.push(this.rockets[0]);
+                    }
+//                    console.log("Taille de la pool : " + this.meatingpool.length);
+                };
+
+                this.selection = function () {
+                    var newRocket = [];
+                    for (var i = 0; i < this.popsize; i++) {
+                        var parentA = random(this.meatingpool).dna;
+                        var parentB = random(this.meatingpool).dna;
+
+                        var child = parentA.crossover(parentB);
+                        /* Sans mutation, le taux d'efficacité fini par
+                         * atteindre 100% ou ne jamais toucher la cible !*/
+                        child.mutation();
+                        newRocket[i] = new rocket(child);
+                    }
+                    this.rockets = newRocket;
+                };
+
+                this.run = function () {
+                    for (var i = 0; i < this.popsize; i++) {
+                        this.rockets[i].show();
+                        this.rockets[i].update();
+                    }
+                };
+            }
+
+            function rocket(dna) {
+                this.pos = createVector(width / 2, height - 10);
+                this.vil = createVector();
+                this.acc = createVector();
+                this.completed = false;
+                this.crashed = false;
+                this.nb_frames = 0;
+
+                if (dna) {
+                    this.dna = dna;
+                } else {
+                    this.dna = new DNA();
+                }
+
+                this.fitness = 0;
+
+                this.calcFitness = function () {
+                    // If rocket crashed dna is bad
+                    if (this.crashed) {
+                        this.fitness = 0;
+                    } else {
+                        var d = dist(circle_target.x, circle_target.y, this.pos.x, this.pos.y);
+//                    console.log("Distance restante : " + d);
+                        this.fitness = map(d, 0, height, height, 0);
+//                    console.log("Distance parcourue : " + this.fitness);
+                        /* Plus le chemin est court plus c'est efficace */
+                        if (this.completed) {
+                            this.fitness *= 2 + (lifespan - this.nb_frames) / 100;
+//                            console.log(1 + (lifespan - this.nb_frames) / 100);
+                        }
+                    }
+                };
+
+                this.show = function () {
+                    push();
+                    translate(this.pos.x, this.pos.y);
+                    rotate(this.vil.heading());
+                    fill(255, 100);
+                    rectMode(CENTER);
+                    rect(0, 0, 25, 5);
+                    pop();
+                };
+
+                this.update = function () {
+                    if (!this.completed && !this.crashed) {
+                        if (this.pos.x > rect_obstacle.x && this.pos.x < rect_obstacle.x + w && this.pos.y > rect_obstacle.y && this.pos.y < rect_obstacle.y + h) {
+                            this.crashed = true;
+                        }
+                        if (this.pos.x < 0 || this.pos.x > width || this.pos.y < 0 || this.pos.y > height) {
+                            this.crashed = true;
+                        }
+                        var d = dist(this.pos.x, this.pos.y, circle_target.x, circle_target.y);
+                        if (d < 20) {
+                            this.pos.x = circle_target.x;
+                            this.pos.y = circle_target.y;
+                            this.completed = true;
+                            this.nb_frames = count_frame;
+                            this.pos = circle_target.copy();
+                            reached++;
+                        }
+                        if (!this.completed && !this.crashed) {
+                            this.vil.add(this.acc);
+                            this.pos.add(this.vil);
+                            this.acc.mult(0);
+                            this.acc.add(this.dna.genes[count_frame]);
+                        }
+                    }
+                };
+            }
+
+            function DNA(genes) {
+                if (genes) {
+                    this.genes = genes;
+                } else {
+                    this.genes = [];
+                    for (var i = 0; i < lifespan; i++) {
+                        this.genes[i] = p5.Vector.random2D();
+                        this.genes[i].setMag(0.7);
+                    }
+                }
+
+                this.crossover = function (partner) {
+                    var newgenes = [];
+                    var mid = floor(random(this.genes.length));
+//                    console.log("gene length : " + this.genes.length);
+                    for (var i = 0; i < lifespan; i++) {
+                        if (Math.floor(Math.random() * Math.floor(2)) === 0) {
+                            newgenes[i] = this.genes[i];
+                        } else {
+                            newgenes[i] = partner.genes[i];
+                        }
+                    }
+                    // Gives DNA object an array
+                    return new DNA(newgenes);
+                };
+
+                this.mutation = function () {
+                    for (var i = 0; i < this.genes.length; i++) {
+                        // if random number less than 0.005, new gene is then random vector
+                        if (random(1) < 0.005) {
+                            this.genes[i] = p5.Vector.random2D();
+                            this.genes[i].setMag(0.7);
+                        }
+                    }
+                };
+            }
+        </script>
+    </body>
+</html>
